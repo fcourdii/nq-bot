@@ -51,6 +51,7 @@ def get_red_folders():
     ]
     headers = {"User-Agent": "Mozilla/5.0"}
     red_folders = []
+    seen_events = set()
 
     for url in urls:
         try:
@@ -58,15 +59,23 @@ def get_red_folders():
             if response.status_code == 200:
                 events = response.json()
                 for event in events:
-                    if event.get("impact") == "High" and event.get("country") == "USD":
-                        red_folders.append({
-                            "time": event.get("date"),
-                            "event": event.get("title")
-                        })
-                if red_folders:
-                    break
+                    impact = str(event.get("impact", "")).lower()
+                    country = str(event.get("country", "")).upper()
+                    title = event.get("title", "")
+                    date = event.get("date", "")
+                    
+                    # Capture High impact or Red Folder USD releases
+                    if "high" in impact and country == "USD":
+                        key = f"{title}_{date}"
+                        if key not in seen_events:
+                            seen_events.add(key)
+                            red_folders.append({
+                                "time": date,
+                                "event": title
+                            })
         except Exception:
             continue
+
     return red_folders
 
 def fetch_pct_changes(ticker_dict):
