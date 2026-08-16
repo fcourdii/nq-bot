@@ -1,0 +1,6 @@
+pyTelegramBotAPI
+requests
+pandas
+yfinance
+transformers
+torch
