@@ -1,11 +1,14 @@
+from datetime import datetime
 import http.server
 import json
 import os
 import socketserver
 import threading
+import time
 import xml.etree.ElementTree as ET
 import pandas as pd
 import requests
+import schedule
 import telebot
 from telebot.types import KeyboardButton, ReplyKeyboardMarkup
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -26,7 +29,10 @@ threading.Thread(target=start_render_health_server, daemon=True).start()
 # 1. TELEGRAM SETTINGS
 # ==========================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = "8567795259"
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8567795259")
+
+if not TELEGRAM_BOT_TOKEN:
+    raise ValueError("Missing TELEGRAM_BOT_TOKEN in Render Environment Variables.")
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
@@ -62,15 +68,23 @@ def get_red_folders():
                     impact = str(event.get("impact", "")).lower()
                     country = str(event.get("country", "")).upper()
                     title = event.get("title", "")
-                    date = event.get("date", "")
+                    raw_date = event.get("date", "")
                     
-                    # Capture High impact or Red Folder USD releases
                     if "high" in impact and country == "USD":
-                        key = f"{title}_{date}"
+                        key = f"{title}_{raw_date}"
                         if key not in seen_events:
                             seen_events.add(key)
+
+                            # Clean timestamp: "Fri 08:30 AM"
+                            formatted_time = raw_date
+                            try:
+                                dt = datetime.fromisoformat(raw_date)
+                                formatted_time = dt.strftime("%a %I:%M %p")
+                            except Exception:
+                                pass
+
                             red_folders.append({
-                                "time": date,
+                                "time": formatted_time,
                                 "event": title
                             })
         except Exception:
@@ -187,22 +201,18 @@ def generate_gc_report():
 
     score = news_score * 0.25
     if drivers:
-        # DXY inverse correlation (35% weight)
         dxy = drivers.get("US Dollar (DXY)", 0.0)
         if dxy > 0.2: score -= 0.35
         elif dxy < -0.2: score += 0.35
 
-        # 10Y Yield inverse correlation (20% weight)
         tnx = drivers.get("10Y Yield (TNX)", 0.0)
         if tnx > 0.5: score -= 0.20
         elif tnx < -0.5: score += 0.20
 
-        # Silver correlation (10% weight)
         silver = drivers.get("Silver (SI)", 0.0)
         if silver > 0.5: score += 0.10
         elif silver < -0.5: score -= 0.10
 
-        # Safe-Haven Spike / VIX
         vix = drivers.get("S&P 500 Vol (VIX)", 0.0)
         if vix > 3.0: score += 0.10
 
@@ -227,7 +237,28 @@ def generate_gc_report():
     )
 
 # ==========================================
-# 6. TELEGRAM COMMAND HANDLERS
+# 6. SCHEDULED DAILY BROADCAST (8:00 AM NY)
+# ==========================================
+def scheduled_morning_brief():
+    print("Executing scheduled morning macro brief...")
+    try:
+        nq_report = generate_nq_report()
+        bot.send_message(TELEGRAM_CHAT_ID, "🌅 <b>MORNING SESSION OPEN PREP</b>", parse_mode="HTML")
+        bot.send_message(TELEGRAM_CHAT_ID, nq_report, parse_mode="HTML")
+    except Exception as e:
+        print(f"Scheduled alert error: {e}")
+
+def run_scheduler():
+    # Render servers operate in UTC. 8:00 AM EDT (UTC-4) = 12:00 UTC.
+    schedule.every().day.at("12:00").do(scheduled_morning_brief)
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
+
+threading.Thread(target=run_scheduler, daemon=True).start()
+
+# ==========================================
+# 7. TELEGRAM COMMAND HANDLERS
 # ==========================================
 @bot.message_handler(commands=["start"])
 def send_welcome(message):
@@ -254,6 +285,14 @@ def handle_gc_scan(message):
     report = generate_gc_report()
     bot.send_message(message.chat.id, report, parse_mode="HTML")
 
+# ==========================================
+# 8. START PROTECTED POLLING LOOP
+# ==========================================
 if __name__ == "__main__":
     print("🤖 Dual NQ/GC Bot is live and listening...")
-    bot.infinity_polling()
+    while True:
+        try:
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
+        except Exception as e:
+            print(f"Polling connection dropped: {e}")
+            time.sleep(3)
