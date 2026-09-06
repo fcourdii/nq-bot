@@ -25,7 +25,7 @@ threading.Thread(target=start_render_health_server, daemon=True).start()
 # ==========================================
 # 1. TELEGRAM SETTINGS
 # ==========================================
-TELEGRAM_BOT_TOKEN = "8844653630:AAHgKUIEVTeeSmioWhDJxJ276dyyvLAY5pA"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = "8567795259"
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
