@@ -1,5 +1,6 @@
 pyTelegramBotAPI
+requests
+pandas
 vaderSentiment
 yfinance
-pandas
-requests
+schedule
