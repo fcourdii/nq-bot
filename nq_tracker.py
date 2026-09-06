@@ -75,11 +75,11 @@ def get_red_folders():
                         if key not in seen_events:
                             seen_events.add(key)
 
-                            # Clean timestamp: "Fri 08:30 AM"
+                            # Formats date and time: "Tue Sep 01, 10:00 AM"
                             formatted_time = raw_date
                             try:
                                 dt = datetime.fromisoformat(raw_date)
-                                formatted_time = dt.strftime("%a %I:%M %p")
+                                formatted_time = dt.strftime("%a %b %d, %I:%M %p")
                             except Exception:
                                 pass
 
