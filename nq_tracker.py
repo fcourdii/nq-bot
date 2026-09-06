@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import http.server
 import json
 import os
@@ -48,7 +48,7 @@ sia.lexicon.update({
 })
 
 # ==========================================
-# 3. COLLECT FOREX FACTORY RED FOLDERS
+# 3. COLLECT FOREX FACTORY RED FOLDERS (FUTURE ONLY)
 # ==========================================
 def get_red_folders():
     urls = [
@@ -58,6 +58,7 @@ def get_red_folders():
     headers = {"User-Agent": "Mozilla/5.0"}
     red_folders = []
     seen_events = set()
+    now = datetime.now(timezone.utc)
 
     for url in urls:
         try:
@@ -73,23 +74,30 @@ def get_red_folders():
                     if "high" in impact and country == "USD":
                         key = f"{title}_{raw_date}"
                         if key not in seen_events:
-                            seen_events.add(key)
-
-                            # Formats date and time: "Tue Sep 01, 10:00 AM"
-                            formatted_time = raw_date
                             try:
                                 dt = datetime.fromisoformat(raw_date)
+                                # Ensure timezone awareness for precise comparison
+                                if dt.tzinfo is None:
+                                    dt = dt.replace(tzinfo=timezone.utc)
+
+                                # Discard events that have already printed/passed
+                                if dt <= now:
+                                    continue
+
+                                seen_events.add(key)
                                 formatted_time = dt.strftime("%a %b %d, %I:%M %p")
+                                red_folders.append({
+                                    "dt": dt,
+                                    "time": formatted_time,
+                                    "event": title
+                                })
                             except Exception:
                                 pass
-
-                            red_folders.append({
-                                "time": formatted_time,
-                                "event": title
-                            })
         except Exception:
             continue
 
+    # Sort so the earliest upcoming release appears at the top
+    red_folders.sort(key=lambda x: x["dt"])
     return red_folders
 
 def fetch_pct_changes(ticker_dict):
